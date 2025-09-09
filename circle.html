@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>气泡碰撞回避效果</title>
+  <style>
+    /* 页面基础样式设置 */
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #fff;
+      overflow: hidden;
+    }
+    
+    /* 气泡容器样式 */
+    .bubble-container {
+      position: relative;
+      width: 800px;
+      height: 500px;
+      background: #fdfdfd;
+      border: 1px solid #eee;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
+    /* 单个气泡样式 */
+    .bubble {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255, 0, 0, 0.08);
+      color: #e33;
+      font-weight: bold;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- 气泡容器，所有气泡都将在其中移动 -->
+  <div class="bubble-container" id="container">
+    <!-- 六个不同大小的气泡元素 -->
+    <div class="bubble" style="width:140px;height:140px;font-size:28px;">熬夜</div>
+    <div class="bubble" style="width:90px;height:90px;font-size:18px;">重盐</div>
+    <div class="bubble" style="width:100px;height:100px;font-size:18px;">焦虑</div>
+    <div class="bubble" style="width:90px;height:90px;font-size:18px;">痰湿</div>
+    <div class="bubble" style="width:90px;height:90px;font-size:18px;">重油</div>
+    <div class="bubble" style="width:80px;height:80px;font-size:14px;">高糖饮食</div>
+  </div>
+
+  <script>
+    // 获取DOM元素
+    const container = document.getElementById("container");
+    const bubbles = [...document.querySelectorAll(".bubble")];
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    // 将DOM气泡元素转换为包含物理属性的气泡对象数组
+    const balls = bubbles.map((el, i) => {
+      const r = el.offsetWidth / 2; // 计算气泡半径
+      return {
+        el,          // DOM元素引用
+        x: Math.random() * (containerWidth - 2*r) + r,  // 随机X坐标（确保在容器内）
+        y: Math.random() * (containerHeight - 2*r) + r, // 随机Y坐标（确保在容器内）
+        vx: (Math.random() - 0.5) * 2,  // 随机X方向速度
+        vy: (Math.random() - 0.5) * 2,  // 随机Y方向速度
+        r                               // 气泡半径
+      };
+    });
+
+    // 更新函数：负责气泡移动、碰撞检测和DOM更新
+    function update() {
+      // 遍历所有气泡
+      for (let i = 0; i < balls.length; i++) {
+        let b = balls[i];
+        
+        // 更新气泡位置
+        b.x += b.vx;
+        b.y += b.vy;
+
+        // 边界碰撞检测与处理：碰到容器边界时反弹
+        if (b.x - b.r < 0) { 
+          b.x = b.r; 
+          b.vx *= -1; 
+        }
+        if (b.x + b.r > containerWidth) { 
+          b.x = containerWidth - b.r; 
+          b.vx *= -1; 
+        }
+        if (b.y - b.r < 0) { 
+          b.y = b.r; 
+          b.vy *= -1; 
+        }
+        if (b.y + b.r > containerHeight) { 
+          b.y = containerHeight - b.r; 
+          b.vy *= -1; 
+        }
+
+        // 气泡间碰撞检测与处理
+        for (let j = i + 1; j < balls.length; j++) {
+          let b2 = balls[j];
+          let dx = b2.x - b.x; // X方向距离
+          let dy = b2.y - b.y; // Y方向距离
+          let dist = Math.sqrt(dx*dx + dy*dy); // 实际距离
+          let minDist = b.r + b2.r; // 最小距离（两半径之和）
+
+          if (dist < minDist) { // 如果发生碰撞
+            // 计算碰撞角度
+            let angle = Math.atan2(dy, dx);
+            // 计算重叠部分
+            let overlap = (minDist - dist) / 2;
+
+            // 分离两个气泡，避免重叠
+            b.x -= Math.cos(angle) * overlap;
+            b.y -= Math.sin(angle) * overlap;
+            b2.x += Math.cos(angle) * overlap;
+            b2.y += Math.sin(angle) * overlap;
+
+            // 简单的碰撞物理模拟：交换速度（弹性碰撞简化版）
+            [b.vx, b2.vx] = [b2.vx, b.vx];
+            [b.vy, b2.vy] = [b2.vy, b.vy];
+          }
+        }
+
+        // 更新DOM元素位置
+        b.el.style.transform = `translate(${b.x - b.r}px, ${b.y - b.r}px)`;
+      }
+
+      // 请求下一帧动画，形成循环
+      requestAnimationFrame(update);
+    }
+
+    // 启动动画循环
+    update();
+  </script>
+</body>
+</html>
