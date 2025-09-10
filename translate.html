@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        .center {
+  position: absolute;
+  top: 200px;
+  left: 200px;
+  width: 50px;
+  height: 50px;
+  background: red;
+  border-radius: 50%;
+}
+
+.orbit {
+  position: absolute;
+  top: 200px;
+  left: 200px;
+  width: 30px;
+  height: 30px;
+  background: blue;
+  border-radius: 50%;
+
+  /* 关键：先移出去（轨道半径=100px），再旋转 */
+  transform: rotate(0deg) translateX(100px);
+  transform-origin: center; /* 以自身中心旋转 */
+  animation: spin 4s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg) translateX(100px);
+  }
+  to {
+    transform: rotate(360deg) translateX(100px);
+  }
+}
+
+    </style>
+</head>
+<body>
+    <div class="center"></div>
+<div class="orbit"></div>
+
+</body>
+</html>
