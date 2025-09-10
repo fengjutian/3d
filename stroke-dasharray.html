@@ -90,8 +90,23 @@
       const angle = (360 * currentScore) / 100;
       const color = getColorByScore(currentScore);
 
-      // 圆环渐变：起点颜色随分数动态变化
-      ring.style.background = `conic-gradient(${color} 0deg, ${color} ${angle}deg, #e6e6e6 ${angle}deg)`;
+      // 圆环渐变：起点添加多种颜色实现渐变效果
+      // 这里创建了一个从更亮到标准色的渐变，范围覆盖10%的圆环
+      const lightColor = color.replace('50%', '65%'); // 更亮的颜色
+      const gradientAngle = Math.min(angle, 36); // 限制渐变范围为10%的圆环
+      
+      if (angle > 0) {
+        // 有渐变起点的圆环样式
+        ring.style.background = `conic-gradient(
+          ${lightColor} 0deg,
+          ${color} ${gradientAngle}deg,
+          ${color} ${angle}deg,
+          #e6e6e6 ${angle}deg
+        )`;
+      } else {
+        // 分数为0时的默认样式
+        ring.style.background = `conic-gradient(red 0deg, #e6e6e6 0deg)`;
+      }
 
       if (progress < 1) {
         requestAnimationFrame(animate);
