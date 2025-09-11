@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div class="container" id="container">
+  <div class="box"></div>
+  <div class="box"></div>
+  <div class="box"></div>
+  <div class="box"></div>
+</div>
+
+<style>
+.container {
+  position: relative;
+  width: 800px;
+  height: 600px;
+  background: #f0f0f0;
+}
+.box {
+  position: absolute;
+  width: 100px;
+  height: 80px;
+  border: 2px solid red;
+}
+</style>
+
+<script>
+const container = document.getElementById('container');
+const boxes = document.querySelectorAll('.box');
+
+const containerWidth = container.clientWidth;
+const containerHeight = container.clientHeight;
+
+boxes.forEach(box => {
+  const maxLeft = containerWidth - box.offsetWidth;
+  const maxTop = containerHeight - box.offsetHeight;
+
+  const randomLeft = Math.random() * maxLeft;
+  const randomTop = Math.random() * maxTop;
+  const randomRotate = (Math.random() * 20) - 10; // -10° 到 10°
+
+  box.style.left = `${randomLeft}px`;
+  box.style.top = `${randomTop}px`;
+  box.style.transform = `rotate(${randomRotate}deg)`;
+});
+</script>
+
+    
+</body>
+</html>
