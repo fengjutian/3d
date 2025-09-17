@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        .card {
+              width: 300px;
+  height: 200px;
+  background: linear-gradient(to right, #8ec5fc, #3f87ff);
+
+  /* clip-path 精确裁剪路径 */
+  clip-path: path("M 0 0 
+                   H 300 
+                   V 200 
+                   A 80 80 0 0 1 220 200 
+                   H 0 
+                   Z");
+        }
+
+    </style>
+</head>
+<body>
+    <div class="card"></div>
+
+</body>
+</html>

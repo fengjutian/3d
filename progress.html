@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>健康得分进度条</title>
+  <style>
+    .progress-container {
+      display: flex;
+      align-items: center;
+      width: 500px;
+      height: 30px;
+      background: linear-gradient(to right, #f8fbff, #ffffff);
+      border-radius: 20px;
+      padding: 2px;
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0; /* 初始值 */
+      background: linear-gradient(to right, #d4d4ff, #7dc8ff);
+      border-radius: 20px;
+      transition: width 0.4s ease;
+    }
+
+    .progress-label {
+      margin-left: auto;
+      margin-right: 15px;
+      font-size: 14px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="progress-container">
+    <div class="progress-bar" id="progressBar"></div>
+    <span class="progress-label">健康得分</span>
+  </div>
+
+  <script>
+    function animateProgress(target) {
+      const bar = document.getElementById("progressBar");
+      let width = 0;
+      const timer = setInterval(() => {
+        if (width >= target) {
+          clearInterval(timer);
+        } else {
+          width++;
+          bar.style.width = width + "%";
+        }
+      }, 20); // 每20ms更新一次，数值越小动画越快
+    }
+
+    // 启动动画到70%
+    animateProgress(70);
+  </script>
+</body>
+</html>

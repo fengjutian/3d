@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D模型查看器 - 性能监控版</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
+        canvas { display: block; }
+        #status {
+            position: fixed; top: 10px; left: 10px;
+            background: rgba(0,0,0,0.7); color: white;
+            padding: 10px; border-radius: 5px;
+            font-family: Arial, sans-serif; font-size: 14px;
+            z-index: 1000;
+        }
+        /* 其他样式保持不变 */
+    </style>
+</head>
+<body>
+    <div id="status">初始化中...</div>
+    <!-- 性能监控面板保持不变 -->
+    <div id="performance-panel">
+        <!-- 内容保持不变 -->
+    </div>
+
+    <!-- 使用官方推荐的CDN链接 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- 添加DRACOLoader支持 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/DRACOLoader.js"></script>
+    <!-- 添加Stats.js用于性能监控 -->
+    <script src="https://cdn.jsdelivr.net/npm/stats.js/build/stats.min.js"></script>
+
+    <script>
+        // 获取DOM元素
+        const statusEl = document.getElementById('status');
+        const performancePanel = document.getElementById('performance-panel');
+        const fpsValueEl = document.getElementById('fps-value');
+        const renderTimeEl = document.getElementById('render-time');
+        const objectCountEl = document.getElementById('object-count');
+        const triangleCountEl = document.getElementById('triangle-count');
+        const vertexCountEl = document.getElementById('vertex-count');
+        const performanceLevelEl = document.getElementById('performance-level');
+        
+        // 全局变量
+        let scene, camera, renderer, controls, model;
+        let stats, showPerformance = false;
+        let frameCount = 0;
+        let lastTime = 0;
+        let renderTimes = [];
+        let maxRenderTimes = 60; // 存储最近60帧的渲染时间
+        
+        // 错误处理函数
+        function handleError(message, error) {
+            console.error(message, error);
+            statusEl.textContent = '错误: ' + message;
+            alert('发生错误: ' + message + '\n\n详情: ' + (error ? error.message : '未知错误'));
+        }
+        
+        // 初始化性能监控
+        function initPerformanceMonitor() {
+            // 创建Stats实例
+            stats = new Stats();
+            stats.dom.style.position = 'fixed';
+            stats.dom.style.top = '10px';
+            stats.dom.style.right = '10px';
+            stats.dom.style.zIndex = '1002';
+            stats.dom.style.display = 'none'; // 初始隐藏
+            document.body.appendChild(stats.dom);
+            
+            // 设置Stats面板（0: FPS, 1: 渲染时间, 2: 内存使用）
+            stats.showPanel(0); // 默认显示FPS面板
+        }
+        
+        // 更新性能统计
+        function updatePerformanceStats() {
+            if (!stats || !scene) return;
+            
+            // 更新Stats.js
+            stats.update();
+            
+            // 获取当前FPS
+            const fps = Math.round(stats.dom.children[0].children[0].textContent);
+            fpsValueEl.textContent = fps;
+            
+            // 计算渲染时间（毫秒）
+            const now = performance.now();
+            const deltaTime = now - lastTime;
+            lastTime = now;
+            
+            // 存储渲染时间并计算平均值
+            renderTimes.push(deltaTime);
+            if (renderTimes.length > maxRenderTimes) {
+                renderTimes.shift();
+            }
+            const avgRenderTime = renderTimes.reduce((sum, time) => sum + time, 0) / renderTimes.length;
+            renderTimeEl.textContent = avgRenderTime.toFixed(2) + 'ms';
+            
+            // 计算场景统计信息
+            const sceneStats = calculateSceneStats(scene);
+            objectCountEl.textContent = sceneStats.objectCount;
+            triangleCountEl.textContent = sceneStats.triangleCount.toLocaleString();
+            vertexCountEl.textContent = sceneStats.vertexCount.toLocaleString();
+            
+            // 更新性能等级
+            updatePerformanceLevel(fps, avgRenderTime);
+        }
+        
+        // 计算场景统计信息（对象数、三角面数、顶点数）
+        function calculateSceneStats(object) {
+            let objectCount = 0;
+            let triangleCount = 0;
+            let vertexCount = 0;
+            
+            object.traverse((node) => {
+                objectCount++;
+                
+                if (node.isMesh) {
+                    const geometry = node.geometry;
+                    if (geometry.isBufferGeometry) {
+                        // 对于BufferGeometry
+                        const index = geometry.index;
+                        const position = geometry.attributes.position;
+                        
+                        // 计算三角面数
+                        if (index !== undefined) {
+                            triangleCount += index.count / 3;
+                        } else if (position !== undefined) {
+                            triangleCount += position.count / 3;
+                        }
+                        
+                        // 计算顶点数
+                        if (position !== undefined) {
+                            vertexCount += position.count;
+                        }
+                    } else if (geometry.isGeometry) {
+                        // 对于旧版Geometry
+                        triangleCount += geometry.faces.length;
+                        vertexCount += geometry.vertices.length;
+                    }
+                }
+            });
+            
+            return {
+                objectCount,
+                triangleCount: Math.round(triangleCount),
+                vertexCount: Math.round(vertexCount)
+            };
+        }
+        
+        // 更新性能等级显示
+        function updatePerformanceLevel(fps, renderTime) {
+            let level = '';
+            let className = '';
+            
+            if (fps >= 50) {
+                level = '优秀';
+                className = 'high-performance';
+            } else if (fps >= 30) {
+                level = '良好';
+                className = 'medium-performance';
+            } else if (fps >= 20) {
+                level = '一般';
+                className = 'medium-performance';
+            } else {
+                level = '较差';
+                className = 'low-performance';
+            }
+            
+            performanceLevelEl.textContent = level;
+            performanceLevelEl.className = 'stat-value ' + className;
+        }
+        
+        // 切换性能监控显示
+        function togglePerformanceMonitor() {
+            showPerformance = !showPerformance;
+            
+            if (showPerformance) {
+                performancePanel.style.display = 'block';
+                if (stats) stats.dom.style.display = 'block';
+                statusEl.textContent = '性能监控已启用 (按P键隐藏)';
+            } else {
+                performancePanel.style.display = 'none';
+                if (stats) stats.dom.style.display = 'none';
+                statusEl.textContent = '模型加载成功！按F键聚焦到模型，按P键显示性能监控';
+            }
+        }
+        
+        // 初始化函数
+        function init() {
+            statusEl.textContent = '正在初始化Three.js...';
+            
+            try {
+                // 初始化性能监控
+                initPerformanceMonitor();
+                
+                // 检查Three.js是否已加载
+                if (typeof THREE === 'undefined') {
+                    throw new Error('Three.js库未加载成功');
+                }
+                
+                statusEl.textContent = 'Three.js加载成功，创建场景...';
+                console.log('Three.js版本:', THREE.REVISION);
+                
+                // 创建场景
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0xeeeeee);
+
+                // 创建相机
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.set(0, 2, 5);
+
+                // 创建渲染器
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                document.body.appendChild(renderer.domElement);
+                
+                statusEl.textContent = '检查控制器...';
+                
+                // 检查OrbitControls是否可用
+                if (typeof THREE.OrbitControls === 'undefined') {
+                    throw new Error('OrbitControls控制器未正确加载');
+                }
+                
+                // 创建控制器
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+
+                // 添加光源
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+                directionalLight.position.set(5, 10, 7.5);
+                directionalLight.castShadow = true;
+                scene.add(directionalLight);
+
+                // 添加辅助坐标轴
+                const axesHelper = new THREE.AxesHelper(5);
+                scene.add(axesHelper);
+
+                // 窗口大小调整监听
+                window.addEventListener('resize', onWindowResize);
+                
+                statusEl.textContent = '场景创建完成，准备加载模型...';
+                
+                // 检查GLTFLoader是否可用
+                if (typeof THREE.GLTFLoader === 'undefined') {
+                    throw new Error('GLTFLoader加载器未正确加载');
+                }
+                
+                // 开始加载模型
+                loadModel();
+
+                // 初始化时间
+                lastTime = performance.now();
+                
+                // 开始动画循环
+                animate();
+            } catch (error) {
+                handleError('初始化失败', error);
+            }
+        }
+
+        // 加载模型函数
+        function loadModel() {
+            try {
+                statusEl.textContent = '开始加载模型...';
+                
+                // 初始化GLTFLoader
+                const loader = new THREE.GLTFLoader();
+                
+                // 创建DRACOLoader实例并配置
+                const dracoLoader = new THREE.DRACOLoader();
+                // 设置DRACO解码器路径
+                dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/libs/draco/gltf/');
+                // 将DRACOLoader关联到GLTFLoader
+                loader.setDRACOLoader(dracoLoader);
+                
+                console.log('尝试加载模型文件: ./models/model.glb');
+                
+                loader.load(
+                    './meridian_acupoint.glb',
+                    
+                    function(gltf) {
+                        console.log('模型加载成功!', gltf);
+                        statusEl.textContent = '模型加载成功！按F键聚焦到模型，按P键显示性能监控';
+                        
+                        model = gltf.scene;
+                        
+                        // 设置模型阴影
+                        model.traverse(function(node) {
+                            if (node.isMesh) {
+                                node.castShadow = true;
+                                node.receiveShadow = true;
+                            }
+                        });
+                        
+                        scene.add(model);
+                        
+                        // 自动定位相机到模型
+                        centerCamera();
+                        
+                        // 添加键盘事件监听
+                        window.addEventListener('keydown', onKeyDown);
+                    },
+                    
+                    function(xhr) {
+                        const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                        statusEl.textContent = `加载中... ${percent}%`;
+                        console.log(`模型加载进度: ${percent}%`);
+                    },
+                    
+                    function(error) {
+                        handleError('模型加载失败', error);
+                    }
+                );
+            } catch (error) {
+                handleError('加载器初始化失败', error);
+            }
+        }
+
+        // 自动定位相机到模型
+        function centerCamera() {
+            if (!model) return;
+            
+            const box = new THREE.Box3().setFromObject(model);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = camera.fov * (Math.PI / 180);
+            const cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 2;
+            
+            camera.position.set(center.x, center.y + maxDim * 0.5, center.z + cameraZ);
+            controls.target.copy(center);
+            controls.update();
+        }
+
+        // 键盘事件处理
+        function onKeyDown(event) {
+            switch(event.key.toLowerCase()) {
+                case 'f':
+                    if (model) {
+                        centerCamera();
+                        if (!showPerformance) {
+                            statusEl.textContent = '已聚焦到模型，按P键显示性能监控';
+                        }
+                    }
+                    break;
+                case 'p':
+                    togglePerformanceMonitor();
+                    break;
+            }
+        }
+
+        // 窗口大小调整处理
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (controls) {
+                controls.update();
+            }
+            
+            renderer.render(scene, camera);
+            
+            // 更新性能监控数据
+            if (showPerformance) {
+                updatePerformanceStats();
+            }
+        }
+
+        // 启动应用
+        window.onload = function() {
+            // 等待一小段时间确保所有脚本都已加载
+            setTimeout(init, 100);
+        };
+    </script>
+</body>
+</html>
