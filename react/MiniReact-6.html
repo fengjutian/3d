@@ -9,9 +9,10 @@
   <div id="portal-root" style="border:1px solid red; padding:10px; margin-top:10px;"></div>
 
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="text/babel">
+  <script type="text/babel" data-plugins="transform-react-jsx" data-react-pragma="createElement" data-react-pragma-fragment="Fragment">
     /**
      * @jsx createElement
+     * @jsxFrag Fragment
      */
 
     const Fragment = Symbol('Fragment');
@@ -200,7 +201,7 @@
       }
 
       return (
-        <div>
+        <>
           <h1>Mini React v5 Interactive Demo</h1>
           <input value={text} onInput={e=>setText(e.target.value)}/>
           <p>You typed: {text}</p>
@@ -217,7 +218,7 @@
           <Portal container={document.getElementById('portal-root')}>
             <p>This is rendered via Portal!</p>
           </Portal>
-        </div>
+        </>
       );
     }
 
