@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Energy Fluid Particle System</title>
+<style>
+body, html { margin:0; padding:0; overflow:hidden; background:black; height:100%; }
+canvas { display:block; width:100vw; height:100vh; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const width = canvas.width;
+const height = canvas.height;
+
+window.addEventListener("resize", ()=>{
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
+// ===== 粒子类 =====
+class Particle {
+  constructor(x,y,color) {
+    this.x = x;
+    this.y = y;
+    this.vx = 0;
+    this.vy = 0;
+    this.life = Math.random()*1.0 + 1.0;
+    this.color = color;
+    this.size = Math.random()*2 + 1;
+  }
+
+  update(dt, vortexes) {
+    // 受涡旋影响
+    let fx=0, fy=0;
+    vortexes.forEach(v=>{
+      let dx = this.x - v.x;
+      let dy = this.y - v.y;
+      let dist2 = dx*dx + dy*dy + 0.01;
+      let angle = v.strength / dist2;
+      fx += -dy*angle*0.5;
+      fy += dx*angle*0.5;
+    });
+    this.vx += fx * dt;
+    this.vy += fy * dt;
+
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    this.life -= dt*0.5;
+    if(this.life <= 0) this.reset(vortexes);
+  }
+
+  reset(vortexes) {
+    // 随机选一个涡旋附近生成
+    let v = vortexes[Math.floor(Math.random()*vortexes.length)];
+    this.x = v.x + (Math.random()-0.5)*100;
+    this.y = v.y + (Math.random()-0.5)*100;
+    this.vx = 0; this.vy = 0;
+    this.life = Math.random()*1.0 + 1.0;
+    this.size = Math.random()*2 + 1;
+    this.color = `hsl(${Math.random()*360},100%,50%)`;
+  }
+
+  draw(ctx) {
+    ctx.fillStyle = this.color;
+    ctx.globalAlpha = Math.min(this.life,1.0);
+    ctx.beginPath();
+    ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+// ===== 初始化粒子 =====
+const particles = [];
+const numParticles = 500;
+
+const vortexes = [
+  {x: width*0.5, y: height*0.5, strength:2000},
+  {x: width*0.3, y: height*0.3, strength:1500},
+  {x: width*0.7, y: height*0.6, strength:1000},
+];
+
+for(let i=0;i<numParticles;i++){
+  let v = vortexes[Math.floor(Math.random()*vortexes.length)];
+  let p = new Particle(v.x + (Math.random()-0.5)*100, v.y + (Math.random()-0.5)*100, `hsl(${Math.random()*360},100%,50%)`);
+  particles.push(p);
+}
+
+// ===== 鼠标涡旋 =====
+let mouse = {x: width*0.5, y: height*0.5, strength:2500};
+canvas.addEventListener("mousemove", e=>{
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+// ===== 渲染循环 =====
+let lastTime = performance.now();
+function animate(time) {
+  const dt = (time - lastTime)/1000;
+  lastTime = time;
+
+  // 半透明覆盖实现尾迹
+  ctx.fillStyle = "rgba(0,0,0,0.1)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // 更新粒子
+  const allVortexes = [...vortexes, mouse];
+  particles.forEach(p=>p.update(dt, allVortexes));
+
+  // 绘制粒子
+  particles.forEach(p=>p.draw(ctx));
+
+  requestAnimationFrame(animate);
+}
+animate(performance.now());
+</script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WebGL Particle Energy Fluid</title>
+<style>
+body, html { margin:0; padding:0; overflow:hidden; background:black; height:100%; }
+canvas { display:block; width:100vw; height:100vh; }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+
+<script id="vertShader" type="x-shader/x-vertex">
+attribute vec2 a_position;
+attribute vec3 a_color;
+attribute float a_pointSize;
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec2 u_mouse;
+
+varying vec3 v_color;
+void main(){
+    vec2 pos = a_position;
+
+    // 多涡旋旋转
+    vec2 centers[4];
+    float strengths[4];
+    centers[0] = u_mouse; strengths[0]=0.5;
+    centers[1] = vec2(0.3,0.3)*2.0-1.0; strengths[1]=0.3;
+    centers[2] = vec2(0.7,0.6)*2.0-1.0; strengths[2]=0.2;
+    centers[3] = vec2(0.5,0.8)*2.0-1.0; strengths[3]=0.25;
+
+    for(int i=0;i<4;i++){
+        vec2 offset = pos - centers[i];
+        float dist = length(offset);
+        float angle = strengths[i]/(dist+0.05) + 0.2*sin(u_time+dist*5.0);
+        float s = sin(angle);
+        float c = cos(angle);
+        pos = centers[i] + vec2(c*offset.x - s*offset.y, s*offset.x + c*offset.y);
+    }
+
+    gl_Position = vec4(pos,0.0,1.0);
+    gl_PointSize = a_pointSize;
+    v_color = a_color;
+}
+</script>
+
+<script id="fragShader" type="x-shader/x-fragment">
+precision mediump float;
+varying vec3 v_color;
+void main(){
+    // 粒子为圆点
+    float r = length(gl_PointCoord-vec2(0.5));
+    float alpha = smoothstep(0.5,0.0,r);
+    gl_FragColor = vec4(v_color,alpha);
+}
+</script>
+
+<script>
+const canvas = document.getElementById("glcanvas");
+const gl = canvas.getContext("webgl");
+
+function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener("resize",resizeCanvas);
+resizeCanvas();
+
+function compileShader(type,source){
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader,source);
+    gl.compileShader(shader);
+    if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+        console.error(gl.getShaderInfoLog(shader));
+    }
+    return shader;
+}
+
+const vertShader = compileShader(gl.VERTEX_SHADER,document.getElementById("vertShader").text);
+const fragShader = compileShader(gl.FRAGMENT_SHADER,document.getElementById("fragShader").text);
+
+const program = gl.createProgram();
+gl.attachShader(program,vertShader);
+gl.attachShader(program,fragShader);
+gl.linkProgram(program);
+gl.useProgram(program);
+
+// ===== 粒子数据 =====
+const numParticles = 2000;
+const positions = new Float32Array(numParticles*2);
+const colors = new Float32Array(numParticles*3);
+const sizes = new Float32Array(numParticles);
+
+for(let i=0;i<numParticles;i++){
+    positions[i*2] = Math.random()*2-1;
+    positions[i*2+1] = Math.random()*2-1;
+    const hue = Math.random()*360;
+    colors[i*3] = Math.sin(hue/360.0*3.1415*2.0)*0.5+0.5;
+    colors[i*3+1] = Math.sin((hue/360.0*2.0+2.0)*3.1415)*0.5+0.5;
+    colors[i*3+2] = Math.cos(hue/360.0*3.1415*2.0)*0.5+0.5;
+    sizes[i] = Math.random()*3+2;
+}
+
+// ===== 创建 buffer =====
+function createBuffer(data, attr, size){
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(program,attr);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT,false,0,0);
+}
+
+createBuffer(positions,"a_position",2);
+createBuffer(colors,"a_color",3);
+createBuffer(sizes,"a_pointSize",1);
+
+// ===== Uniforms =====
+const u_resolution = gl.getUniformLocation(program,"u_resolution");
+const u_time = gl.getUniformLocation(program,"u_time");
+const u_mouse = gl.getUniformLocation(program,"u_mouse");
+
+let mouse = [0,0];
+canvas.addEventListener("mousemove",(e)=>{
+    mouse = [(e.clientX/canvas.width)*2-1,(1-e.clientY/canvas.height)*2+1];
+});
+
+// ===== 混合模式 =====
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+
+function render(){
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform2f(u_resolution,canvas.width,canvas.height);
+    gl.uniform1f(u_time,performance.now()*0.001);
+    gl.uniform2f(u_mouse, mouse[0], mouse[1]);
+    gl.drawArrays(gl.POINTS,0,numParticles);
+    requestAnimationFrame(render);
+}
+render();
+</script>
+</body>
+</html>

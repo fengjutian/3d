@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Advanced Energy Fluid</title>
+<style>
+body, html { margin:0; padding:0; overflow:hidden; background:black; height:100%; }
+canvas { display:block; width:100vw; height:100vh; }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+
+<script id="vertShader" type="x-shader/x-vertex">
+attribute vec2 a_position;
+attribute vec3 a_color;
+attribute float a_pointSize;
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec2 u_mouse;
+
+varying vec3 v_color;
+varying float v_speed;
+
+float hash(float n){ return fract(sin(n)*43758.5453123);}
+float noise(vec2 p){
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float a = hash(i.x + i.y*57.0);
+    float b = hash(i.x+1.0 + i.y*57.0);
+    float c = hash(i.x + (i.y+1.0)*57.0);
+    float d = hash(i.x+1.0 + (i.y+1.0)*57.0);
+    vec2 u = f*f*(3.0-2.0*f);
+    return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;
+}
+
+void main(){
+    vec2 pos = a_position;
+
+    // 多涡旋旋转
+    vec2 centers[4];
+    float strengths[4];
+    centers[0] = u_mouse; strengths[0]=0.5;
+    centers[1] = vec2(-0.4,-0.3); strengths[1]=0.3;
+    centers[2] = vec2(0.5,0.6); strengths[2]=0.2;
+    centers[3] = vec2(0.2,0.7); strengths[3]=0.25;
+
+    vec2 vel = vec2(0.0);
+    for(int i=0;i<4;i++){
+        vec2 offset = pos - centers[i];
+        float dist = length(offset);
+        float angle = strengths[i]/(dist+0.05) + 0.2*sin(u_time+dist*5.0);
+        float s = sin(angle); float c = cos(angle);
+        vec2 newPos = centers[i] + vec2(c*offset.x - s*offset.y, s*offset.x + c*offset.y);
+        vel += (newPos-pos);
+        pos = newPos;
+    }
+
+    // 噪声扰动
+    float n = noise(pos*10.0 + u_time*0.5);
+    vec2 noiseOffset = vec2(cos(n*6.28), sin(n*6.28))*0.005;
+    pos += noiseOffset;
+    vel += noiseOffset;
+
+    v_speed = length(vel);
+
+    gl_Position = vec4(pos,0.0,1.0);
+    gl_PointSize = a_pointSize + v_speed*15.0; // 速度越快粒子越大
+    v_color = a_color;
+}
+</script>
+
+<script id="fragShader" type="x-shader/x-fragment">
+precision mediump float;
+varying vec3 v_color;
+varying float v_speed;
+
+void main(){
+    vec2 c = gl_PointCoord - vec2(0.5);
+    float r = length(c);
+
+    // alpha 随半径衰减，速度增加发光感
+    float alpha = smoothstep(0.5,0.0,r) * (0.5 + 0.5*v_speed);
+
+    // 颜色渐变：随速度和位置变化
+    vec3 col = v_color * (0.5 + 0.5*sin(v_speed*10.0 + gl_FragCoord.x*0.01 + gl_FragCoord.y*0.01));
+
+    gl_FragColor = vec4(col, alpha);
+}
+</script>
+
+<script>
+const canvas = document.getElementById("glcanvas");
+const gl = canvas.getContext("webgl");
+
+function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener("resize",resizeCanvas);
+resizeCanvas();
+
+function compileShader(type,src){
+    const s = gl.createShader(type);
+    gl.shaderSource(s,src);
+    gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){
+        console.error(gl.getShaderInfoLog(s));
+    }
+    return s;
+}
+
+const vertShader = compileShader(gl.VERTEX_SHADER,document.getElementById("vertShader").text);
+const fragShader = compileShader(gl.FRAGMENT_SHADER,document.getElementById("fragShader").text);
+const program = gl.createProgram();
+gl.attachShader(program,vertShader);
+gl.attachShader(program,fragShader);
+gl.linkProgram(program);
+gl.useProgram(program);
+
+// 粒子数据
+const numParticles = 4000;
+const positions = new Float32Array(numParticles*2);
+const colors = new Float32Array(numParticles*3);
+const sizes = new Float32Array(numParticles);
+
+for(let i=0;i<numParticles;i++){
+    positions[i*2] = Math.random()*2-1;
+    positions[i*2+1] = Math.random()*2-1;
+    const hue = Math.random()*360;
+    colors[i*3] = Math.sin(hue/360*6.2831)*0.5+0.5;
+    colors[i*3+1] = Math.cos(hue/360*6.2831)*0.5+0.5;
+    colors[i*3+2] = Math.sin(hue/360*6.2831+3.1415/2.0)*0.5+0.5;
+    sizes[i] = Math.random()*2+1;
+}
+
+function createBuffer(data, attr, size){
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(program, attr);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc,size,gl.FLOAT,false,0,0);
+}
+
+createBuffer(positions,"a_position",2);
+createBuffer(colors,"a_color",3);
+createBuffer(sizes,"a_pointSize",1);
+
+// uniforms
+const u_resolution = gl.getUniformLocation(program,"u_resolution");
+const u_time = gl.getUniformLocation(program,"u_time");
+const u_mouse = gl.getUniformLocation(program,"u_mouse");
+
+let mouse = [0,0];
+canvas.addEventListener("mousemove",(e)=>{
+    mouse = [(e.clientX/canvas.width)*2-1,(1-e.clientY/canvas.height)*2+1];
+});
+
+// 混合模式 + 尾迹渐隐
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+
+function render(){
+    // 半透明黑色覆盖实现尾迹渐隐
+    gl.clearColor(0.0,0.0,0.0,0.05);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.uniform2f(u_resolution,canvas.width,canvas.height);
+    gl.uniform1f(u_time,performance.now()*0.001);
+    gl.uniform2f(u_mouse,mouse[0],mouse[1]);
+
+    gl.drawArrays(gl.POINTS,0,numParticles);
+    requestAnimationFrame(render);
+}
+render();
+</script>
+</body>
+</html>
