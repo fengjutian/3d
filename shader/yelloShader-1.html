@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Radial Glow (WebGL shader)</title>
+  <style>
+    html,body { height:100%; margin:0; }
+    canvas { display:block; width:100%; height:100%; background:#fafafa; }
+  </style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<script>
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl');
+if (!gl) { alert('WebGL not supported'); }
+
+// resize handling (devicePixelRatio aware)
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(300, innerWidth);
+  const h = Math.max(300, innerHeight);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// vertex shader (full-screen triangles)
+const vs = `
+attribute vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}
+`;
+
+// fragment shader: layered radial gaussians + aspect-correct circle
+const fs = `
+precision highp float;
+uniform vec2 u_resolution; // pixels
+uniform vec2 u_center;     // pixels
+uniform float u_radius;    // pixels
+
+// simple gaussian-like function (fast)
+float gauss(float d, float sigma) {
+  // clamp to avoid huge exponents
+  float x = d / max(1e-6, sigma);
+  return exp(-x * x);
+}
+
+void main() {
+  vec2 frag = gl_FragCoord.xy;
+
+  // normalize distances relative to the *minimum* screen dimension so circle stays circular
+  float minRes = min(u_resolution.x, u_resolution.y);
+  vec2 centered = (frag - u_center) / minRes; // units: fraction of min dimension
+  float dist = length(centered);
+
+  float radius = u_radius / minRes; // radius in same normalized units
+
+  // avoid division by zero
+  if (radius <= 0.0) {
+    gl_FragColor = vec4(0.0);
+    return;
+  }
+
+  // three layered "glow" contributions with different spreads
+  float g_inner = gauss(dist, radius * 0.18) * 1.2;  // sharp bright core
+  float g_mid   = gauss(dist, radius * 0.45) * 0.95; // main orange body
+  float g_outer = gauss(dist, radius * 0.95) * 0.6;  // wide soft halo
+
+  // colors (tweak these to match your reference)
+  vec3 col_inner = vec3(1.00, 0.90, 0.46); // bright yellow
+  vec3 col_mid   = vec3(1.00, 0.66, 0.23); // orange
+  vec3 col_outer = vec3(1.00, 0.82, 0.70); // pale peach
+
+  // additive blend of layers
+  vec3 color = col_inner * g_inner + col_mid * g_mid + col_outer * g_outer;
+
+  // compute alpha as maximum contribution (so edges fade out)
+  float alpha = clamp(max(max(g_inner, g_mid), g_outer), 0.0, 1.0);
+
+  // slight gamma-correction like boost to avoid dullness (optional)
+  color = pow(color, vec3(1.0 / 1.0)); // no-op now, change to 1.0/1.2 if you want stronger look
+
+  gl_FragColor = vec4(color, alpha);
+}
+`;
+
+// helpers: compile/link
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  throw new Error(gl.getProgramInfoLog(prog));
+}
+gl.useProgram(prog);
+
+// full-screen two triangles
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1,-1,  1,-1,  -1,1,
+  -1,1,   1,-1,   1,1
+]), gl.STATIC_DRAW);
+
+const posLoc = gl.getAttribLocation(prog, 'a_position');
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+// locations
+const uResLoc = gl.getUniformLocation(prog, 'u_resolution');
+const uCenterLoc = gl.getUniformLocation(prog, 'u_center');
+const uRadiusLoc = gl.getUniformLocation(prog, 'u_radius');
+
+// draw (single frame). you can animate by changing uniforms inside requestAnimationFrame
+function draw() {
+  // ensure canvas size matches style size
+  resize();
+
+  gl.clearColor(0.98, 0.98, 0.98, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  // uniforms in pixels
+  gl.uniform2f(uResLoc, canvas.width, canvas.height);
+
+  // put center in the middle (in pixels). tweak to move the glow.
+  gl.uniform2f(uCenterLoc, canvas.width * 0.5, canvas.height * 0.5);
+
+  // radius in pixels (use min dimension * fraction)
+  const radiusPx = Math.min(canvas.width, canvas.height) * 0.32; // tweak 0.32 -> bigger/smaller
+  gl.uniform1f(uRadiusLoc, radiusPx);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+draw();
+</script>
+</body>
+</html>
