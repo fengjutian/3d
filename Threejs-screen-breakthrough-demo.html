@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Three.js — Screen Breakthrough Demo</title>
+  <style>
+    :root{--w:900px;--h:540px}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;margin:24px;background:#0b0b0c;color:#eee}
+    h1{font-weight:600;font-size:18px;margin:0 0 12px}
+
+    /* Screen container (the 'device screen' or hero area) */
+    .screen-wrap{
+      width:var(--w);height:var(--h);position:relative;margin:12px 0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.4);overflow:visible
+    }
+
+    /* the visible screen area (acts as clip mask) */
+    .screen-inner{
+      position:relative;width:100%;height:100%;border-radius:10px;overflow:hidden;border:6px solid #111;background:linear-gradient(180deg,#0f1720,#081018);
+    }
+
+    /* two stacked canvases: one confined inside .screen-inner, another on top for the "popped-out" front part */
+    canvas{display:block}
+    #canvas-inside{position:absolute;left:0;top:0;width:100%;height:100%;}
+    #canvas-outside{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+
+    /* decorative bezel to make the 'screen' look like a device */
+    .bezel{position:absolute;inset:0;border-radius:12px;pointer-events:none}
+
+    .controls{margin-top:12px;display:flex;gap:12px;align-items:center}
+    .label{font-size:13px;opacity:.9}
+    .btn{background:#111;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.04);cursor:pointer}
+    .credits{margin-top:8px;opacity:.7;font-size:13px}
+  </style>
+</head>
+<body>
+  <h1>Three.js — "Break the Screen" Demo</h1>
+  <div class="screen-wrap">
+    <div class="screen-inner" id="screen">
+      <canvas id="canvas-inside"></canvas>
+      <canvas id="canvas-outside"></canvas>
+      <div class="bezel"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="label">Drag to rotate • Scroll to push/pull</div>
+    <button class="btn" id="btn-reset">Reset</button>
+  </div>
+  <div class="credits">Uses Three.js, local clipping planes. Clone geometry is used to render "inside" and "outside" parts separately.</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.min.js"></script>
+  <script>
+  // --- Basic setup ---
+  const container = document.getElementById('screen');
+  const canvasInside = document.getElementById('canvas-inside');
+  const canvasOutside = document.getElementById('canvas-outside');
+
+  // two renderers sharing the same scene/camera size
+  const rendererInside = new THREE.WebGLRenderer({canvas: canvasInside, antialias: true, alpha: true});
+  const rendererOutside = new THREE.WebGLRenderer({canvas: canvasOutside, antialias: true, alpha: true});
+  rendererInside.setPixelRatio(window.devicePixelRatio);
+  rendererOutside.setPixelRatio(window.devicePixelRatio);
+  rendererInside.setSize(container.clientWidth, container.clientHeight, false);
+  rendererOutside.setSize(container.clientWidth, container.clientHeight, false);
+  rendererInside.localClippingEnabled = true;
+  rendererOutside.localClippingEnabled = true;
+
+  // Scene & camera
+  const scene = new THREE.Scene();
+  scene.background = null;
+  const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
+  camera.position.set(0, 0.6, 4.5);
+
+  // lights
+  const amb = new THREE.AmbientLight(0xffffff, 0.45);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(5, 10, 7);
+  scene.add(amb, dir);
+
+  // create a sample model (you can replace with GLTF loader)
+  const geom = new THREE.TorusKnotGeometry(0.8, 0.25, 160, 24);
+
+  // clipping plane: the "screen plane" at world z = 0 (facing camera)
+  // plane normal points toward +z; .constant is offset along normal
+  const screenPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+  // inside material: render the part behind the screen (z <= 0)
+  const matInside = new THREE.MeshStandardMaterial({
+    color: 0x3bd1ff,
+    metalness: 0.35,
+    roughness: 0.25,
+    clippingPlanes: [ screenPlane ], // keeps the side where plane.normal.dot(p) + constant < 0
+    clipShadows: true,
+  });
+
+  // outside material: render the front part (z >= 0) — use reversed plane
+  const invPlane = screenPlane.clone().negate();
+  const matOutside = new THREE.MeshStandardMaterial({
+    color: 0xff6b8a,
+    metalness: 0.5,
+    roughness: 0.2,
+    clippingPlanes: [ invPlane ],
+    clipShadows: true,
+  });
+
+  // create two meshes: one for inside (drawn in inside canvas), one for outside (drawn in outside canvas)
+  const meshInside = new THREE.Mesh(geom, matInside);
+  const meshOutside = new THREE.Mesh(geom, matOutside);
+  scene.add(meshInside, meshOutside);
+
+  // Add a soft shadow-like plane behind (for depth reference)
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshStandardMaterial({color:0x050606,roughness:1,metalness:0}));
+  floor.rotation.x = -Math.PI/2; floor.position.y = -1.8; scene.add(floor);
+
+  // initial transform
+  meshInside.position.set(0, 0, 0.0);
+  meshOutside.position.copy(meshInside.position);
+
+  // orbit-like controls (very small, custom) — pointer drag rotates
+  let isDown = false, px=0, py=0, rotX=0.0, rotY=0.0, dist = 0.0;
+  container.addEventListener('pointerdown', (e)=>{isDown=true;px=e.clientX;py=e.clientY;container.setPointerCapture(e.pointerId)});
+  window.addEventListener('pointerup',(e)=>{isDown=false});
+  window.addEventListener('pointermove',(e)=>{if(!isDown) return; const dx = (e.clientX - px)/200; const dy = (e.clientY - py)/200; rotY += dx; rotX += dy; px=e.clientX; py=e.clientY;});
+  container.addEventListener('wheel',(e)=>{dist += e.deltaY * 0.001; dist = Math.max(-1.3, Math.min(1.8, dist))});
+
+  document.getElementById('btn-reset').addEventListener('click', ()=>{rotX=0;rotY=0;dist=0});
+
+  // handle resize
+  function onResize(){
+    const w = container.clientWidth, h = container.clientHeight;
+    rendererInside.setSize(w, h, false);
+    rendererOutside.setSize(w, h, false);
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', onResize);
+
+  // animation loop
+  const clock = new THREE.Clock();
+  function animate(){
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    // simple animation: bob + rotation, and use `dist` to push object forward out of screen
+    const pushZ = THREE.MathUtils.lerp(0.0, 1.8, (Math.sin(t*0.8)*0.5+0.5));
+
+    meshInside.rotation.x = 0.4 + rotX;
+    meshInside.rotation.y = rotY + t*0.25;
+    meshInside.position.z = 0.4 * Math.sin(t*0.6) + dist;
+
+    meshOutside.rotation.copy(meshInside.rotation);
+    meshOutside.position.copy(meshInside.position);
+
+    // Render pipeline: render inside scene to the 'inside' canvas (which is clipped by CSS via overflow:hidden)
+    // The inside renderer will only draw the part behind the screenPlane (material's clippingPlanes already set)
+    rendererInside.setScissorTest(false);
+    rendererInside.clear(true, true, true);
+    rendererInside.render(scene, camera);
+
+    // Render outside parts on top canvas. We clear with alpha so the interior shows through where outside canvas is transparent.
+    rendererOutside.clear(true, true, true);
+    rendererOutside.render(scene, camera);
+  }
+  animate();
+
+  // Optional: replace with GLTF loader example
+  // If you'd like to load a glTF model instead of the torus knot, use THREE.GLTFLoader from examples and replace the geometry with the loaded scene.
+
+  </script>
+</body>
+</html>

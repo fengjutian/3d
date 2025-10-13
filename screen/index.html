@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Three.js — 3D Window Penetration Demo</title>
+  <style>
+    :root{--w:1000px;--h:600px}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;margin:24px;background:#0b0b0c;color:#eee}
+    h1{font-weight:600;font-size:18px;margin:0 0 12px}
+    .screen-wrap{width:var(--w);height:var(--h);position:relative;margin:12px 0;border-radius:14px;overflow:visible}
+    .viewport{width:100%;height:100%;border-radius:10px;overflow:hidden;border:8px solid #060607;background:linear-gradient(180deg,#07121a,#001018)}
+    canvas{display:block}
+    .controls{margin-top:12px;display:flex;gap:12px;align-items:center}
+    .btn{background:#111;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.04);cursor:pointer}
+    .label{font-size:13px;opacity:.9}
+    .credits{margin-top:8px;opacity:.7;font-size:13px}
+  </style>
+</head>
+<body>
+  <h1>Three.js — "Penetrate the Window" Demo (3D frame)</h1>
+  <div class="screen-wrap">
+    <div class="viewport" id="viewport"></div>
+  </div>
+
+  <div class="controls">
+    <div class="label">Drag to rotate • Scroll to push/pull • Space to toggle autoplay</div>
+    <button class="btn" id="btn-reset">Reset</button>
+    <button class="btn" id="btn-load">Load GLTF (if you have one)</button>
+  </div>
+  <div class="credits">Frame is an extruded rectangular ring — model moves from behind the frame and passes through its window. Replace the sample model with your GLTF for realistic product shots.</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.154.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.154.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script>
+  // --- Setup ---
+  const container = document.getElementById('viewport');
+  const scene = new THREE.Scene();
+  scene.background = null;
+
+  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(container.clientWidth, container.clientHeight, false);
+  renderer.shadowMap.enabled = true;
+  container.appendChild(renderer.domElement);
+
+  const camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.1, 100);
+  camera.position.set(0, 1.2, 6);
+
+  // Controls
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 2.5;
+  controls.maxDistance = 12;
+
+  // lights
+  const hemi = new THREE.HemisphereLight(0xddeeff, 0x101012, 0.7);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+  dir.position.set(5, 10, 6);
+  dir.castShadow = true;
+  dir.shadow.mapSize.set(2048,2048);
+  dir.shadow.camera.left = -10; dir.shadow.camera.right = 10; dir.shadow.camera.top = 10; dir.shadow.camera.bottom = -10;
+  scene.add(dir);
+
+  // ground
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(40,40), new THREE.MeshStandardMaterial({color:0x020203, roughness:1, metalness:0}));
+  ground.rotation.x = -Math.PI/2; ground.position.y = -2; ground.receiveShadow = true; scene.add(ground);
+
+  // --- Build a 3D screen frame (extruded rectangular ring) ---
+  function makeFrame(width=3.8, height=2.2, thickness=0.18, inset=0.38, bevelSize=0.02){
+    const outer = new THREE.Shape();
+    outer.moveTo(-width/2, -height/2);
+    outer.lineTo(width/2, -height/2);
+    outer.lineTo(width/2, height/2);
+    outer.lineTo(-width/2, height/2);
+    outer.lineTo(-width/2, -height/2);
+
+    const inner = new THREE.Path();
+    inner.moveTo(-width/2 + inset, -height/2 + inset);
+    inner.lineTo(width/2 - inset, -height/2 + inset);
+    inner.lineTo(width/2 - inset, height/2 - inset);
+    inner.lineTo(-width/2 + inset, height/2 - inset);
+    inner.lineTo(-width/2 + inset, -height/2 + inset);
+
+    outer.holes.push(inner);
+
+    const extrudeSettings = { depth: thickness, bevelEnabled: true, bevelSize: bevelSize, bevelThickness: 0.01 };
+    const geom = new THREE.ExtrudeGeometry(outer, extrudeSettings);
+    geom.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({color:0x0b1116, metalness:0.4, roughness:0.45});
+    const frame = new THREE.Mesh(geom, mat);
+    frame.castShadow = true;
+    frame.receiveShadow = false;
+    // center the geometry so depth grows toward +z
+    frame.position.z = 0; // frame front at z = thickness
+    frame.rotation.x = 0;
+    return frame;
+  }
+
+  const frame = makeFrame();
+  // shift frame so its mid-thickness aligns near z=0 (let front face at z=0.09)
+  frame.position.z = -0.09; // because extrusion places object around z=0
+  scene.add(frame);
+
+  // add a subtle inner screen surface (a slightly recessed plane to read as screen glass)
+  const innerPlane = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 1.6), new THREE.MeshPhysicalMaterial({color:0x021428, metalness:0.0, roughness:0.15, transmission:0.18, transparent:true, opacity:0.9}));
+  innerPlane.position.z = 0.02; innerPlane.position.y = 0; innerPlane.position.x = 0; innerPlane.receiveShadow = false; scene.add(innerPlane);
+
+  // --- Sample model (replaceable) ---
+  // use a torus knot grouped so we can easily replace with GLTF
+  const demoGroup = new THREE.Group();
+  const geom = new THREE.TorusKnotGeometry(0.9, 0.28, 200, 28);
+  const mat = new THREE.MeshStandardMaterial({color:0xff6b8a, metalness:0.6, roughness:0.25});
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  demoGroup.add(mesh);
+  scene.add(demoGroup);
+
+  // position model initially behind the screen (z negative)
+  demoGroup.position.set(0, -0.05, -2.2);
+  demoGroup.rotation.set(0.2, -0.7, 0);
+
+  // shadow helper (fake contact shadow beneath object)
+  const shadowMat = new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.18});
+  const shadowMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.6,1.5), shadowMat);
+  shadowMesh.rotation.x = -Math.PI/2; shadowMesh.position.y = -1.9; shadowMesh.position.z = 0.5; shadowMesh.visible = true; scene.add(shadowMesh);
+
+  // --- Animation: push the model through the screen's window ---
+  let progress = 0; // 0 behind, 1 front
+  let auto = true;
+  let direction = 1;
+
+  function setProgress(p){
+    progress = THREE.MathUtils.clamp(p, 0, 1);
+    // map progress to z: behind (-2.2) -> through (0) -> front (+1.2)
+    const z = THREE.MathUtils.lerp(-2.2, 1.2, progress);
+    demoGroup.position.z = z;
+    // also apply subtle scale and rotation for drama
+    demoGroup.scale.setScalar(THREE.MathUtils.lerp(0.86, 1.06, progress));
+    demoGroup.rotation.x += 0.004 * direction;
+    demoGroup.rotation.y += 0.006 * direction;
+    // change shadow opacity/position
+    shadowMesh.position.z = THREE.MathUtils.lerp(0.9, 0.2, progress);
+    shadowMat.opacity = THREE.MathUtils.lerp(0.08, 0.28, progress);
+  }
+
+  // autoplay loop
+  const clock = new THREE.Clock();
+  function updateAuto(dt){
+    if(!auto) return;
+    const speed = 0.22;
+    progress += dt * speed * direction;
+    if(progress >= 1){ progress = 1; direction = -1; }
+    if(progress <= 0){ progress = 0; direction = 1; }
+    setProgress(progress);
+  }
+
+  // interaction: scroll to push/pull
+  container.addEventListener('wheel', (e)=>{ auto = false; progress += e.deltaY * -0.0012; setProgress(progress); });
+  // space to toggle autoplay
+  window.addEventListener('keydown', (e)=>{ if(e.code === 'Space'){ auto = !auto; e.preventDefault(); } });
+  document.getElementById('btn-reset').addEventListener('click', ()=>{ auto = false; progress = 0; setProgress(progress); controls.reset(); });
+
+  // load GLTF button (opens file selector)
+  document.getElementById('btn-load').addEventListener('click', ()=>{
+    const inp = document.createElement('input'); inp.type='file'; inp.accept = '.gltf,.glb';
+    inp.onchange = (ev)=>{
+      const file = ev.target.files[0]; if(!file) return;
+      const url = URL.createObjectURL(file);
+      const loader = new THREE.GLTFLoader();
+      loader.load(url, (gltf)=>{
+        // remove demo mesh
+        scene.remove(demoGroup);
+        const model = gltf.scene;
+        // center and scale model to fit window
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3(); box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = 1.6 / maxDim; // fit into ~1.6 unit window height
+        model.scale.setScalar(scale);
+        // recenter
+        box.setFromObject(model);
+        const center = new THREE.Vector3(); box.getCenter(center);
+        model.position.sub(center);
+        model.traverse(n=>{ if(n.isMesh){ n.castShadow=true; n.receiveShadow=true; } });
+        demoGroup.add(model);
+        // place group behind
+        demoGroup.position.set(0, -0.05, -2.6);
+        progress = 0; auto = false; setProgress(progress);
+        URL.revokeObjectURL(url);
+      }, undefined, (err)=>{ console.error(err); alert('Failed to load model'); });
+    };
+    inp.click();
+  });
+
+  // resize handling
+  function onResize(){
+    renderer.setSize(container.clientWidth, container.clientHeight, false);
+    camera.aspect = container.clientWidth / container.clientHeight; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', onResize);
+
+  // render loop
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+    updateAuto(dt);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // Give user quick guidance
+  console.log('Demo ready — drag to rotate, scroll to push/pull, click Load GLTF to replace model.');
+  </script>
+</body>
+</html>

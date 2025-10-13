@@ -1,0 +1,16 @@
+<body>
+  <div id="viewport"></div>
+  <script type="module" src="main.js"></script>
+</body>
+<style>
+  body { margin: 0; background: #111; overflow: hidden; }
+  #viewport {
+    width: 600px;
+    height: 350px;
+    margin: 50px auto;
+    border: 8px solid #333;
+    border-radius: 12px;
+    overflow: visible; /* 允许模型突破可视框 */
+    position: relative;
+  }
+</style>
