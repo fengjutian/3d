@@ -46,6 +46,10 @@ scene.add(insideMesh);
 scene.add(outsideMesh);
 
 let dir = 1;
+let baseCamZ = 12;   // 摄像机初始位置
+let minCamZ = 6;     // 冲出时最近距离
+let baseScale = 1;   // 模型初始缩放
+let maxScale = 2.2;  // 冲出时最大缩放
 
 function animate() {
   requestAnimationFrame(animate);
@@ -55,29 +59,28 @@ function animate() {
   insideMesh.rotation.y += 0.015;
   outsideMesh.rotation.copy(insideMesh.rotation);
 
-  // 同步位置并做Z轴冲出
+  // Z轴穿出动画
   insideMesh.position.z += 0.05 * dir;
   outsideMesh.position.z = insideMesh.position.z;
-  if (insideMesh.position.z > 5) dir = -1;
-  if (insideMesh.position.z < -4) dir = 1;
+
+  // ✅ 模型往前冲 → 逐渐放大、相机推近
+  const t = (insideMesh.position.z + 3) / 6;  // 0 ~ 1 的出屏进度
+  const smoothT = Math.min(Math.max(t, 0), 1);
+
+  // 放大效果
+  const scale = baseScale + (maxScale - baseScale) * smoothT;
+  insideMesh.scale.set(scale, scale, scale);
+  outsideMesh.scale.set(scale, scale, scale);
+
+  // 镜头推近
+  camera.position.z = baseCamZ - (baseCamZ - minCamZ) * smoothT;
+
+  // ✅ 往返切换
+  if (insideMesh.position.z > 3) dir = -1;
+  if (insideMesh.position.z < -3) dir = 1;
 
   renderer.render(scene, camera);
-
-  // ✅ 创建“屏幕玻璃框”可视化
-    const frameGeo = new THREE.BoxGeometry(6, 3.5, 0.2);
-    const frameMat = new THREE.MeshPhysicalMaterial({
-    color: 0xaaaaaa,
-    transparent: true,
-    opacity: 0.15,
-    roughness: 0.1,
-    transmission: 0.9,
-    thickness: 0.5,
-    metalness: 0.2,
-    });
-    const frameMesh = new THREE.Mesh(frameGeo, frameMat);
-    frameMesh.position.set(0, 0, 0);
-    scene.add(frameMesh);
-
 }
 
 animate();
+
