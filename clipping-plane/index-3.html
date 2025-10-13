@@ -1,0 +1,124 @@
+<body>
+  <div id="viewport"></div>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+
+    const container = document.getElementById('viewport');
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#111');
+
+    // 模型
+    const boxGeo = new THREE.BoxGeometry(2, 2, 2);
+    const boxMat = new THREE.MeshStandardMaterial({ color: 0xff8855, roughness: 0.3, metalness: 0.6 });
+    const mesh = new THREE.Mesh(boxGeo, boxMat);
+    scene.add(mesh);
+
+    // 光源
+    const light = new THREE.DirectionalLight(0xffffff, 1.5);
+    light.position.set(5, 5, 10);
+    scene.add(light);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+    scene.add(ambient);
+
+    // 渲染器
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    // 裸眼 3D：左右眼相机
+    const eyeSeparation = 0.1; // 视差
+    const baseCam = new THREE.PerspectiveCamera(50, w / h, 0.1, 100);
+    baseCam.position.set(0, 0, 8);
+
+    const leftCam = baseCam.clone();
+    leftCam.position.x -= eyeSeparation;
+
+    const rightCam = baseCam.clone();
+    rightCam.position.x += eyeSeparation;
+
+    // 动画参数
+    let dir = 1;
+    const baseCamZ = 12;
+    const minCamZ = 6;
+    const baseScale = 1;
+    const maxScale = 2.2;
+    const offset = 0.8;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // 自转
+      mesh.rotation.x += 0.01;
+      mesh.rotation.y += 0.015;
+
+      // 模拟突破屏幕：Z轴往返移动
+      mesh.position.z += 0.05 * dir;
+      const t = (mesh.position.z + 3) / 6;
+      const smoothT = THREE.MathUtils.smoothstep(t, 0, 1);
+
+      // 缩放 + X/Y 偏移
+      const scale = baseScale + (maxScale - baseScale) * smoothT;
+      mesh.scale.setScalar(scale);
+      mesh.position.x = offset * smoothT * Math.sin(mesh.rotation.y * 2);
+      mesh.position.y = offset * smoothT * Math.sin(mesh.rotation.x * 2);
+
+      // 镜头拉近
+      baseCam.position.z = baseCamZ - (baseCamZ - minCamZ) * smoothT;
+      leftCam.position.z = baseCam.position.z;
+      rightCam.position.z = baseCam.position.z;
+
+      // 往返
+      if (mesh.position.z > 3) dir = -1;
+      if (mesh.position.z < -3) dir = 1;
+
+      // 裸眼 3D 渲染左右画面
+      renderer.setScissorTest(true);
+
+      // 左眼
+      renderer.setScissor(0, 0, w / 2, h);
+      renderer.setViewport(0, 0, w / 2, h);
+      renderer.render(scene, leftCam);
+
+      // 右眼
+      renderer.setScissor(w / 2, 0, w / 2, h);
+      renderer.setViewport(w / 2, 0, w / 2, h);
+      renderer.render(scene, rightCam);
+
+      renderer.setScissorTest(false);
+    }
+
+    animate();
+
+    // 窗口缩放自适应
+    window.addEventListener('resize', () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      baseCam.aspect = w / h;
+      baseCam.updateProjectionMatrix();
+      leftCam.aspect = w / h;
+      leftCam.updateProjectionMatrix();
+      rightCam.aspect = w / h;
+      rightCam.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    });
+  </script>
+
+  <style>
+    body { margin: 0; background: #111; overflow: hidden; }
+    #viewport {
+      width: 600px;
+      height: 350px;
+      margin: 50px auto;
+      border: 8px solid #333;
+      border-radius: 12px;
+      overflow: visible; /* 允许模型突破可视框 */
+      position: relative;
+    }
+  </style>
+</body>

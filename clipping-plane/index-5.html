@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js WebGL + CSS3D 飞出 DOM</title>
+    <style>
+        body { 
+            margin: 0; 
+            background: #111; 
+            overflow: hidden; 
+        }
+
+        #viewport {
+            width: 600px;
+            height: 350px;
+            margin: 50px auto;
+            border: 8px solid #333;
+            border-radius: 12px;
+            overflow: visible; 
+            position: relative;
+        }
+
+        #overlay {
+            width: 400px;
+            height: 200px;
+            margin: 20px auto;
+            border: 2px dashed #888;
+            position: relative;
+        }
+
+        .flying-box {
+            width: 80px;
+            height: 80px;
+            background: rgba(255,0,0,0.7);
+            border-radius: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="viewport"></div>
+    <div id="overlay"></div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+        import { CSS3DRenderer, CSS3DObject } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/renderers/CSS3DRenderer.js';
+
+        const container = document.getElementById('viewport');
+        const overlay = document.getElementById('overlay');
+
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+
+        // --- 场景 & 相机 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#1a1a1a');
+
+        const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 200);
+        camera.position.set(0, 0, 12);
+
+        // --- WebGL 渲染器 (3D 模型) ---
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(w, h);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        // --- CSS3D 渲染器 (DOM 元素) ---
+        const cssRenderer = new CSS3DRenderer();
+        cssRenderer.setSize(w, h);
+        cssRenderer.domElement.style.position = 'absolute';
+        cssRenderer.domElement.style.top = '0px';
+        container.appendChild(cssRenderer.domElement);
+
+        // --- 光源 ---
+        const light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.set(5, 5, 10);
+        scene.add(light);
+
+        const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambient);
+
+        // --- WebGL 立方体 Mesh ---
+        const boxGeo = new THREE.BoxGeometry(2, 2, 2);
+
+        const boxMatInside = new THREE.MeshStandardMaterial({ color: 0x50b6ff });
+        const boxMatOutside = new THREE.MeshStandardMaterial({ color: 0xff8855, side: THREE.DoubleSide });
+
+        const insideMesh = new THREE.Mesh(boxGeo, boxMatInside);
+        const outsideMesh = new THREE.Mesh(boxGeo, boxMatOutside);
+
+        scene.add(insideMesh);
+        scene.add(outsideMesh);
+
+        // --- CSS3DObject DOM 元素 ---
+        const div = document.createElement('div');
+        div.className = 'flying-box';
+        const cssObject = new CSS3DObject(div);
+        cssObject.position.copy(insideMesh.position);
+        scene.add(cssObject);
+
+        // --- 动画参数 ---
+        let dir = 1;
+        const baseCamZ = 12;
+        const minCamZ = 6;
+        const baseScale = 1;
+        const maxScale = 2.2;
+        const offset = 0.8;
+
+        // --- 动画循环 ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 旋转
+            insideMesh.rotation.x += 0.01;
+            insideMesh.rotation.y += 0.015;
+            outsideMesh.rotation.copy(insideMesh.rotation);
+
+            // Z轴飞出
+            insideMesh.position.z += 0.05 * dir;
+            outsideMesh.position.z = insideMesh.position.z;
+
+            // 平滑进度
+            const t = (insideMesh.position.z + 3) / 6;
+            const smoothT = THREE.MathUtils.smoothstep(t, 0, 1);
+
+            // 缩放
+            const scale = baseScale + (maxScale - baseScale) * smoothT;
+            insideMesh.scale.setScalar(scale);
+            outsideMesh.scale.copy(insideMesh.scale);
+
+            // X/Y 摇摆
+            insideMesh.position.x = offset * smoothT * Math.sin(insideMesh.rotation.y * 2);
+            insideMesh.position.y = offset * smoothT * Math.sin(insideMesh.rotation.x * 2);
+            outsideMesh.position.x = insideMesh.position.x;
+            outsideMesh.position.y = insideMesh.position.y;
+
+            // CSS3DObject 跟随 Mesh
+            cssObject.position.copy(insideMesh.position);
+            cssObject.rotation.copy(insideMesh.rotation);
+            cssObject.scale.copy(insideMesh.scale);
+
+            // 相机拉近
+            camera.position.z = baseCamZ - (baseCamZ - minCamZ) * smoothT;
+
+            // 往返逻辑
+            if (insideMesh.position.z > 3) dir = -1;
+            if (insideMesh.position.z < -3) dir = 1;
+
+            // 渲染
+            renderer.render(scene, camera);      // 保留原有 3D 模型
+            cssRenderer.render(scene, camera);   // DOM 元素飞出
+        }
+
+        animate();
+
+        // --- 窗口缩放自适应 ---
+        window.addEventListener('resize', () => {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+            cssRenderer.setSize(w, h);
+        });
+    </script>
+</body>
+</html>

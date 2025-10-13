@@ -1,0 +1,89 @@
+<body>
+  <div id="viewport"></div>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+
+    const container = document.getElementById('viewport');
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#111');
+
+    // 模型
+    const boxGeo = new THREE.BoxGeometry(2, 2, 2);
+    const boxMat = new THREE.MeshStandardMaterial({ color: 0xff8855, roughness: 0.3, metalness: 0.6 });
+    const mesh = new THREE.Mesh(boxGeo, boxMat);
+    scene.add(mesh);
+
+    // 光源
+    const light = new THREE.DirectionalLight(0xffffff, 1.5);
+    light.position.set(5, 5, 10);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+
+    // 渲染器
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    // 多视点参数
+    const numViews = 9; // 视点数量
+    const eyeSeparation = 0.1; // 单个视点水平偏移
+    const cams = [];
+
+    for (let i = 0; i < numViews; i++) {
+      const cam = new THREE.PerspectiveCamera(50, w / h, 0.1, 100);
+      // 计算水平偏移
+      const offset = (i - Math.floor(numViews / 2)) * eyeSeparation;
+      cam.position.set(offset, 0, 8);
+      cam.lookAt(0, 0, 0);
+      cams.push(cam);
+    }
+
+    // 柱状透镜效果：每列像素选择对应视点
+    const stripeWidth = Math.floor(w / numViews);
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      mesh.rotation.x += 0.01;
+      mesh.rotation.y += 0.015;
+
+      renderer.clear();
+      for (let i = 0; i < numViews; i++) {
+        const x = i * stripeWidth;
+        const width = (i === numViews - 1) ? w - x : stripeWidth;
+        renderer.setViewport(x, 0, width, h);
+        renderer.render(scene, cams[i]);
+      }
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      renderer.setSize(w, h);
+      for (let i = 0; i < numViews; i++) {
+        cams[i].aspect = w / h;
+        cams[i].updateProjectionMatrix();
+      }
+    });
+  </script>
+
+  <style>
+    body { margin: 0; background: #111; overflow: hidden; }
+    #viewport {
+      width: 600px;
+      height: 350px;
+      margin: 50px auto;
+      border: 8px solid #333;
+      border-radius: 12px;
+      overflow: visible;
+      position: relative;
+    }
+  </style>
+</body>

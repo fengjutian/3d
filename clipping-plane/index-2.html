@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js 裁剪与突破边框动画</title>
+    <style>
+        /* 样式部分 */
+        body { 
+            margin: 0; 
+            background: #111; 
+            overflow: hidden; /* 隐藏整个页面的滚动条 */
+        }
+        
+        #viewport {
+            width: 600px;
+            height: 350px;
+            margin: 50px auto;
+            border: 8px solid #333;
+            border-radius: 12px;
+            /* 关键设置：允许模型突破 div 边框 */
+            overflow: visible; 
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div id="viewport"></div>
+
+    <script type="module">
+        // 导入 Three.js 模块
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+
+        const container = document.getElementById('viewport');
+        // 确保容器在获取尺寸时已经存在
+        if (!container) {
+            console.error("Viewport element not found.");
+        }
+        
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+
+        // --- 1. 场景 & 相机 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#1a1a1a');
+
+        const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 200);
+        camera.position.set(0, 0, 12);
+        scene.add(camera);
+
+        // --- 2. 渲染器 ---
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        // 开启渲染器对裁剪平面的支持
+        renderer.localClippingEnabled = true; 
+        renderer.setSize(w, h);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        // --- 3. 光源 ---
+        const light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.set(5, 5, 10);
+        scene.add(light);
+
+        const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambient);
+
+        // --- 4. 裁剪平面（z=0 屏幕面）---
+        // 法线向量 (0, 0, -1) 表示裁剪 z < 0 的部分（保留 z > 0 的部分）
+        // 常数 0 表示平面过原点 z=0
+        const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
+
+        // --- 5. 几何体与材质 ---
+        const boxGeo = new THREE.BoxGeometry(2, 2, 2);
+
+        // 被裁剪的“内部”材质
+        const boxMatInside = new THREE.MeshStandardMaterial({
+            color: 0x50b6ff, // 蓝色
+            clippingPlanes: [clipPlane], // 应用裁剪平面
+            clipShadows: true,
+        });
+
+        // 完整的“外部”材质
+        const boxMatOutside = new THREE.MeshStandardMaterial({
+            color: 0xff8855, // 橙色
+            side: THREE.DoubleSide, // 确保内外侧都可见
+            roughness: 0.3,
+            metalness: 0.6,
+        });
+
+        // 创建两个 Mesh，它们共享相同的几何体和变换
+        const insideMesh = new THREE.Mesh(boxGeo, boxMatInside);
+        const outsideMesh = new THREE.Mesh(boxGeo, boxMatOutside);
+
+        scene.add(insideMesh);
+        scene.add(outsideMesh);
+
+        // --- 6. 动画参数 ---
+        let dir = 1; // Z轴移动方向 (1: 往前, -1: 往后)
+        const baseCamZ = 12; // 相机初始 Z
+        const minCamZ = 6;  // 相机最小 Z (最靠近)
+        const baseScale = 1; // 模型最小缩放
+        const maxScale = 2.2; // 模型最大缩放
+        const offset = 0.8; // X/Y 偏移量
+
+        // --- 7. 动画循环 ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 自转
+            insideMesh.rotation.x += 0.01;
+            insideMesh.rotation.y += 0.015;
+            outsideMesh.rotation.copy(insideMesh.rotation); // 保持同步
+
+            // Z轴飞出
+            insideMesh.position.z += 0.05 * dir;
+            outsideMesh.position.z = insideMesh.position.z; // 保持同步
+
+            // 计算进度 t: Z轴位置从 -3 到 3 的平滑过渡
+            const t = (insideMesh.position.z + 3) / 6; 
+            const smoothT = THREE.MathUtils.smoothstep(t, 0, 1); // 平滑过渡 (慢-快-慢)
+
+            // 缩放 & X/Y 偏移 (基于平滑进度)
+            const scale = baseScale + (maxScale - baseScale) * smoothT;
+            insideMesh.scale.setScalar(scale);
+            outsideMesh.scale.copy(insideMesh.scale);
+
+            // X/Y 摇摆偏移
+            insideMesh.position.x = insideMesh.position.x = offset * smoothT * Math.sin(insideMesh.rotation.y * 2);
+            insideMesh.position.y = offset * smoothT * Math.sin(insideMesh.rotation.x * 2);
+            outsideMesh.position.x = insideMesh.position.x;
+            outsideMesh.position.y = insideMesh.position.y;
+
+            // 镜头拉近 (基于平滑进度)
+            camera.position.z = baseCamZ - (baseCamZ - minCamZ) * smoothT;
+
+            // 往返逻辑
+            if (insideMesh.position.z > 3) dir = -1; // 到达最前，往回
+            if (insideMesh.position.z < -3) dir = 1;  // 到达最后，往前
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // --- 8. 窗口缩放自适应 ---
+        window.addEventListener('resize', () => {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix(); // 更新投影矩阵
+            renderer.setSize(w, h);
+        });
+    </script>
+</body>
+</html>

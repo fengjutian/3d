@@ -1,0 +1,125 @@
+<body>
+  <div id="viewport"></div>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+
+    const container = document.getElementById('viewport');
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+
+    // 场景 & 相机
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#1a1a1a');
+
+    const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 200);
+    camera.position.set(0, 0, 12);
+    scene.add(camera);
+
+    // 渲染器
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    // 光源
+    const light = new THREE.DirectionalLight(0xffffff, 1.5);
+    light.position.set(5, 5, 10);
+    scene.add(light);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+    scene.add(ambient);
+
+    // 裁剪平面（z=0 屏幕面）
+    const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
+
+    // 几何体
+    const boxGeo = new THREE.BoxGeometry(2, 2, 2);
+
+    const boxMatInside = new THREE.MeshStandardMaterial({
+      color: 0x50b6ff,
+      clippingPlanes: [clipPlane],
+      clipShadows: true,
+    });
+
+    const boxMatOutside = new THREE.MeshStandardMaterial({
+      color: 0xff8855,
+      side: THREE.DoubleSide,
+      roughness: 0.3,
+      metalness: 0.6,
+    });
+
+    const insideMesh = new THREE.Mesh(boxGeo, boxMatInside);
+    const outsideMesh = new THREE.Mesh(boxGeo, boxMatOutside);
+
+    scene.add(insideMesh);
+    scene.add(outsideMesh);
+
+    // 动画参数
+    let dir = 1;
+    const baseCamZ = 12;
+    const minCamZ = 6;
+    const baseScale = 1;
+    const maxScale = 2.2;
+    const offset = 0.8;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // 自转
+      insideMesh.rotation.x += 0.01;
+      insideMesh.rotation.y += 0.015;
+      outsideMesh.rotation.copy(insideMesh.rotation);
+
+      // Z轴飞出
+      insideMesh.position.z += 0.05 * dir;
+      outsideMesh.position.z = insideMesh.position.z;
+
+      // 飞出比例
+      const t = (insideMesh.position.z + 3) / 6;
+      const smoothT = THREE.MathUtils.smoothstep(t, 0, 1); // 平滑过渡
+
+      // 缩放 & X/Y 偏移
+      const scale = baseScale + (maxScale - baseScale) * smoothT;
+      insideMesh.scale.setScalar(scale);
+      outsideMesh.scale.copy(insideMesh.scale);
+
+      insideMesh.position.x = offset * smoothT * Math.sin(insideMesh.rotation.y * 2);
+      insideMesh.position.y = offset * smoothT * Math.sin(insideMesh.rotation.x * 2);
+      outsideMesh.position.x = insideMesh.position.x;
+      outsideMesh.position.y = insideMesh.position.y;
+
+      // 镜头拉近
+      camera.position.z = baseCamZ - (baseCamZ - minCamZ) * smoothT;
+
+      // 往返
+      if (insideMesh.position.z > 3) dir = -1;
+      if (insideMesh.position.z < -3) dir = 1;
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // 窗口缩放自适应
+    window.addEventListener('resize', () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    });
+  </script>
+
+  <style>
+    body { margin: 0; background: #111; overflow: hidden; }
+    #viewport {
+      width: 600px;
+      height: 350px;
+      margin: 50px auto;
+      border: 8px solid #333;
+      border-radius: 12px;
+      overflow: visible; /* 允许模型突破可视框 */
+      position: relative;
+    }
+  </style>
+</body>
