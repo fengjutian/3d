@@ -45,11 +45,13 @@ const outsideMesh = new THREE.Mesh(boxGeo, boxMatOutside);
 scene.add(insideMesh);
 scene.add(outsideMesh);
 
+// 假设已有 scene, camera, renderer, insideMesh, outsideMesh, frameMesh
+
 let dir = 1;
-let baseCamZ = 12;   // 摄像机初始位置
-let minCamZ = 6;     // 冲出时最近距离
-let baseScale = 1;   // 模型初始缩放
-let maxScale = 2.2;  // 冲出时最大缩放
+let baseCamZ = 12;
+let minCamZ = 6;
+let baseScale = 1;
+let maxScale = 2.2;
 
 function animate() {
   requestAnimationFrame(animate);
@@ -59,23 +61,28 @@ function animate() {
   insideMesh.rotation.y += 0.015;
   outsideMesh.rotation.copy(insideMesh.rotation);
 
-  // Z轴穿出动画
+  // Z轴穿出
   insideMesh.position.z += 0.05 * dir;
   outsideMesh.position.z = insideMesh.position.z;
 
-  // ✅ 模型往前冲 → 逐渐放大、相机推近
-  const t = (insideMesh.position.z + 3) / 6;  // 0 ~ 1 的出屏进度
+  // ✅ 飞出边框：X/Y 微偏移
+  const t = (insideMesh.position.z + 3) / 6; // 0~1
   const smoothT = Math.min(Math.max(t, 0), 1);
 
-  // 放大效果
-  const scale = baseScale + (maxScale - baseScale) * smoothT;
-  insideMesh.scale.set(scale, scale, scale);
-  outsideMesh.scale.set(scale, scale, scale);
+  insideMesh.scale.setScalar(baseScale + (maxScale - baseScale) * smoothT);
+  outsideMesh.scale.copy(insideMesh.scale);
+
+  // 飞出时向 X/Y 轻微偏移（制造从角落冲出的感觉）
+  const offset = 0.8; // 可调节飞出偏移量
+  insideMesh.position.x = offset * smoothT * Math.sin(insideMesh.rotation.y * 2);
+  insideMesh.position.y = offset * smoothT * Math.sin(insideMesh.rotation.x * 2);
+  outsideMesh.position.x = insideMesh.position.x;
+  outsideMesh.position.y = insideMesh.position.y;
 
   // 镜头推近
   camera.position.z = baseCamZ - (baseCamZ - minCamZ) * smoothT;
 
-  // ✅ 往返切换
+  // 往返切换
   if (insideMesh.position.z > 3) dir = -1;
   if (insideMesh.position.z < -3) dir = 1;
 
@@ -83,4 +90,5 @@ function animate() {
 }
 
 animate();
+
 
