@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>择偶匹配仪表盘</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial; padding:20px; background:#f0f2f5; }
+h2,h3 { margin-top:20px; }
+input[type=range]{ width:180px; margin-right:10px; }
+#dashboard { display:flex; flex-wrap:wrap; gap:20px; margin-top:20px; }
+.card { border-radius:12px; padding:15px; width:300px; box-shadow:0 4px 8px rgba(0,0,0,0.1); transition:transform 0.3s, background 0.5s; text-align:center; color:#fff;}
+.card h4{ margin:0 0 10px 0; }
+.card .score{ font-weight:bold; margin-bottom:10px; }
+.slider-container{ margin-bottom:8px; color:#000; }
+button { margin:5px 0; }
+</style>
+</head>
+<body>
+
+<h2>择偶匹配仪表盘</h2>
+
+<h3>1. 设置权重（滑条调整维度重要性）</h3>
+<div id="sliders"></div>
+
+<h3>2. 添加候选对象</h3>
+<button onclick="addCandidate()">添加候选对象</button>
+
+<table id="candidatesTable" style="display:none;"><tbody></tbody></table>
+
+<h3>3. 匹配度仪表盘</h3>
+<div id="dashboard"></div>
+
+<script>
+const dimensions=[
+  {name:'年龄',type:'boolean',desc:'88年以后'},
+  {name:'身高',type:'boolean',desc:'175+cm'},
+  {name:'房产',type:'boolean',desc:'南京有房'},
+  {name:'性格包容',type:'number',desc:'0-10分'},
+  {name:'教育',type:'boolean',desc:'本科及以上'},
+  {name:'兴趣匹配',type:'number',desc:'0-10分'},
+  {name:'额外加分',type:'boolean',desc:'E人'}
+];
+
+let charts=[];
+
+// 初始化滑条
+function updateSliders(){
+  const container=document.getElementById('sliders');
+  container.innerHTML='';
+  dimensions.forEach(dim=>{
+    const div=document.createElement('div');
+    div.className='slider-container';
+    div.innerHTML=`${dim.name}: <span id="weight_${dim.name}_val">5</span>
+      <input type="range" min="0" max="10" value="5" id="weight_${dim.name}" oninput="updateDashboard()">`;
+    container.appendChild(div);
+  });
+}
+
+// 添加候选人
+function addCandidate(name="匿名"){
+  const tbody=document.querySelector("#candidatesTable tbody");
+  const row=document.createElement("tr");
+  row.innerHTML=`<td><input type="text" value="${name}" oninput="updateDashboard()"></td>`;
+  dimensions.forEach(dim=>{
+    let defaultVal=dim.type==='number'?5:1;
+    row.innerHTML+=`<td><input type="${dim.type==='number'?'number':'checkbox'}" ${dim.type==='number'?'min="0" max="10" value="'+defaultVal+'"':'checked'} oninput="updateDashboard()"></td>`;
+  });
+  row.innerHTML+=`<td><button onclick="removeCandidate(this)">删除</button></td>`;
+  tbody.appendChild(row);
+  updateDashboard();
+}
+
+function removeCandidate(btn){ btn.closest("tr").remove(); updateDashboard(); }
+
+function calculateResults(){
+  const weights={};
+  dimensions.forEach(dim=>{
+    const w=parseFloat(document.getElementById(`weight_${dim.name}`).value);
+    document.getElementById(`weight_${dim.name}_val`).innerText=w;
+    weights[dim.name]=w;
+  });
+
+  const rows=document.querySelectorAll("#candidatesTable tbody tr");
+  const results=[];
+  rows.forEach(row=>{
+    const name=row.cells[0].querySelector("input").value || "匿名";
+    let score=0;
+    const scores={};
+    dimensions.forEach((dim,i)=>{
+      let val;
+      if(dim.type==='number') val=parseFloat(row.cells[i+1].querySelector("input").value);
+      else val=row.cells[i+1].querySelector("input").checked?10:0;
+      scores[dim.name]=val;
+      score+=val*weights[dim.name];
+    });
+    results.push({name,score,scores});
+  });
+  results.sort((a,b)=>b.score-a.score);
+  return results;
+}
+
+function scoreToColor(score,maxScore){ const hue=Math.min(Math.max((score/maxScore)*120,0),120); return `hsl(${hue},70%,50%)`; }
+
+function updateDashboard(){
+  const results=calculateResults();
+  const dashboard=document.getElementById("dashboard");
+  dashboard.innerHTML='';
+  charts.forEach(c=>c.destroy());
+  charts=[];
+
+  const maxScore=results.length>0? results[0].score:1;
+
+  results.forEach(r=>{
+    const card=document.createElement("div");
+    card.className="card";
+    card.style.background=scoreToColor(r.score,maxScore);
+    card.innerHTML=`<h4>${r.name}</h4><div class="score">匹配度:${r.score.toFixed(1)}</div><canvas></canvas>`;
+    dashboard.appendChild(card);
+
+    const ctx=card.querySelector("canvas").getContext("2d");
+    const dataColors=dimensions.map(dim=>{
+      const val=r.scores[dim.name];
+      const hue=Math.min(Math.max(val*12,0),120);
+      return `hsl(${hue},70%,60%)`;
+    });
+
+    const chart=new Chart(ctx,{
+      type:'bar',
+      data:{ labels:dimensions.map(d=>d.name), datasets:[{label:'贡献分', data:dimensions.map(dim=>r.scores[dim.name]*parseFloat(document.getElementById(`weight_${dim.name}`).value)), backgroundColor:dataColors }] },
+      options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:120}} }
+    });
+    charts.push(chart);
+  });
+}
+
+// 初始化
+updateSliders();
+addCandidate("小红");
+addCandidate("小明");
+addCandidate("小丽");
+</script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>找对象匹配仪表盘</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  padding: 20px;
+  background-color: #f0f2f5;
+}
+h2, h3 { margin-top: 20px; }
+input[type=number] { width: 60px; margin-right: 10px; }
+button { margin-top: 10px; }
+
+#controls { margin-bottom: 20px; }
+#candidatesTable { display: none; } /* 隐藏原表格，只用作数据管理 */
+
+#dashboard {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 15px;
+  width: 250px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  transition: transform 0.3s;
+}
+.card.high { border: 2px solid #4caf50; }
+.card.medium { border: 2px solid #ff9800; }
+.card.low { border: 2px solid #f44336; }
+
+.card h4 { margin: 0 0 10px 0; text-align: center; }
+.card .score { font-weight: bold; text-align: center; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h2>找对象匹配仪表盘</h2>
+
+<div id="controls">
+  <h3>设置你的偏好权重</h3>
+  <label>外貌: <input type="number" id="weight_appearance" value="3" oninput="updateDashboard()"></label>
+  <label>性格: <input type="number" id="weight_personality" value="5" oninput="updateDashboard()"></label>
+  <label>兴趣: <input type="number" id="weight_interest" value="2" oninput="updateDashboard()"></label>
+  <br>
+  <button onclick="addCandidate()">添加候选对象</button>
+</div>
+
+<!-- 隐藏数据表 -->
+<table id="candidatesTable">
+  <tbody></tbody>
+</table>
+
+<div id="dashboard"></div>
+
+<script>
+let charts = [];
+
+function addCandidate(name="匿名", appearance=5, personality=5, interest=5) {
+  const tbody = document.querySelector("#candidatesTable tbody");
+  const row = document.createElement("tr");
+  row.innerHTML = `
+    <td><input type="text" value="${name}" oninput="updateDashboard()"></td>
+    <td><input type="number" min="1" max="10" value="${appearance}" oninput="updateDashboard()"></td>
+    <td><input type="number" min="1" max="10" value="${personality}" oninput="updateDashboard()"></td>
+    <td><input type="number" min="1" max="10" value="${interest}" oninput="updateDashboard()"></td>
+    <td><button onclick="removeCandidate(this)">删除</button></td>
+  `;
+  tbody.appendChild(row);
+  updateDashboard();
+}
+
+function removeCandidate(btn) {
+  btn.closest("tr").remove();
+  updateDashboard();
+}
+
+function calculateResults() {
+  const wAppearance = parseFloat(document.getElementById("weight_appearance").value);
+  const wPersonality = parseFloat(document.getElementById("weight_personality").value);
+  const wInterest = parseFloat(document.getElementById("weight_interest").value);
+
+  const rows = document.querySelectorAll("#candidatesTable tbody tr");
+  const results = [];
+
+  rows.forEach(row => {
+    const name = row.cells[0].querySelector("input").value || "匿名";
+    const appearance = parseFloat(row.cells[1].querySelector("input").value);
+    const personality = parseFloat(row.cells[2].querySelector("input").value);
+    const interest = parseFloat(row.cells[3].querySelector("input").value);
+    const score = appearance*wAppearance + personality*wPersonality + interest*wInterest;
+    results.push({name, score, appearance, personality, interest});
+  });
+
+  results.sort((a,b)=>b.score-a.score);
+  return results;
+}
+
+function getCardClass(score) {
+  if(score>=20) return "high";
+  if(score>=12) return "medium";
+  return "low";
+}
+
+function updateDashboard() {
+  const results = calculateResults();
+  const dashboard = document.getElementById("dashboard");
+  dashboard.innerHTML = "";
+  charts.forEach(c => c.destroy());
+  charts = [];
+
+  results.forEach(r => {
+    const card = document.createElement("div");
+    const cardClass = getCardClass(r.score);
+    card.className = `card ${cardClass}`;
+
+    card.innerHTML = `
+      <h4>${r.name}</h4>
+      <div class="score">匹配度: ${r.score.toFixed(1)}</div>
+      <canvas></canvas>
+    `;
+    dashboard.appendChild(card);
+
+    const ctx = card.querySelector("canvas").getContext("2d");
+    const chart = new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels:['外貌','性格','兴趣'],
+        datasets:[{
+          label:'分数',
+          data:[r.appearance,r.personality,r.interest],
+          backgroundColor:['#FF6384','#36A2EB','#FFCE56']
+        }]
+      },
+      options:{
+        responsive:true,
+        plugins:{ legend:{display:false} },
+        scales:{ y:{beginAtZero:true, max:10} }
+      }
+    });
+    charts.push(chart);
+  });
+}
+
+// 初始化示例
+addCandidate("小红", 8, 7, 6);
+addCandidate("小明", 5, 9, 8);
+addCandidate("小丽", 6, 5, 9);
+
+</script>
+</body>
+</html>

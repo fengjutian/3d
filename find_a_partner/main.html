@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>动态找对象匹配仪表盘</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; }
+  input[type=number] { width: 60px; margin-right: 10px; }
+  table { border-collapse: collapse; margin-top: 20px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+  th { background-color: #f2f2f2; }
+  #charts { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
+  canvas { background: #f9f9f9; border: 1px solid #ccc; border-radius: 8px; padding: 10px; }
+</style>
+</head>
+<body>
+
+<h2>动态找对象匹配仪表盘</h2>
+
+<h3>1. 设置你的偏好权重</h3>
+<label>外貌: <input type="number" id="weight_appearance" value="3" oninput="updateCharts()"></label>
+<label>性格: <input type="number" id="weight_personality" value="5" oninput="updateCharts()"></label>
+<label>兴趣: <input type="number" id="weight_interest" value="2" oninput="updateCharts()"></label>
+
+<h3>2. 添加候选对象</h3>
+<table id="candidatesTable">
+  <thead>
+    <tr>
+      <th>名字</th>
+      <th>外貌 (1-10)</th>
+      <th>性格 (1-10)</th>
+      <th>兴趣 (1-10)</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+<button onclick="addCandidateRow()">添加候选对象</button>
+
+<h3>3. 匹配度结果</h3>
+<div id="resultTableContainer">
+  <table id="resultTable">
+    <thead>
+      <tr>
+        <th>名字</th>
+        <th>匹配度分数</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<h3>4. 匹配度可视化</h3>
+<div id="charts"></div>
+
+<script>
+let charts = [];
+
+function addCandidateRow() {
+  const tbody = document.querySelector("#candidatesTable tbody");
+  const row = document.createElement("tr");
+  row.innerHTML = `
+    <td><input type="text" placeholder="名字" oninput="updateCharts()"></td>
+    <td><input type="number" min="1" max="10" value="5" oninput="updateCharts()"></td>
+    <td><input type="number" min="1" max="10" value="5" oninput="updateCharts()"></td>
+    <td><input type="number" min="1" max="10" value="5" oninput="updateCharts()"></td>
+    <td><button onclick="removeRow(this)">删除</button></td>
+  `;
+  tbody.appendChild(row);
+  updateCharts();
+}
+
+function removeRow(button) {
+  button.closest("tr").remove();
+  updateCharts();
+}
+
+function calculateMatching() {
+  const wAppearance = parseFloat(document.getElementById("weight_appearance").value);
+  const wPersonality = parseFloat(document.getElementById("weight_personality").value);
+  const wInterest = parseFloat(document.getElementById("weight_interest").value);
+
+  const rows = document.querySelectorAll("#candidatesTable tbody tr");
+  const results = [];
+
+  rows.forEach(row => {
+    const name = row.cells[0].querySelector("input").value || "匿名";
+    const appearance = parseFloat(row.cells[1].querySelector("input").value);
+    const personality = parseFloat(row.cells[2].querySelector("input").value);
+    const interest = parseFloat(row.cells[3].querySelector("input").value);
+
+    const score = appearance * wAppearance + personality * wPersonality + interest * wInterest;
+    results.push({ name, score, appearance, personality, interest });
+  });
+
+  results.sort((a, b) => b.score - a.score);
+
+  const tbody = document.querySelector("#resultTable tbody");
+  tbody.innerHTML = "";
+  results.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${r.name}</td><td>${r.score}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  return results;
+}
+
+function updateCharts() {
+  const results = calculateMatching();
+  const chartsContainer = document.getElementById("charts");
+  chartsContainer.innerHTML = "";
+  charts.forEach(c => c.destroy());
+  charts = [];
+
+  results.forEach(r => {
+    const canvas = document.createElement("canvas");
+    chartsContainer.appendChild(canvas);
+    const chart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: ['外貌', '性格', '兴趣'],
+        datasets: [{
+          label: `${r.name} 各维度评分`,
+          data: [r.appearance, r.personality, r.interest],
+          backgroundColor: ['#FF6384','#36A2EB','#FFCE56']
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: `匹配度: ${r.score}`
+          }
+        },
+        scales: {
+          y: { beginAtZero: true, max: 10 }
+        }
+      }
+    });
+    charts.push(chart);
+  });
+}
+
+// 初始化添加两行示例
+addCandidateRow();
+addCandidateRow();
+
+</script>
+</body>
+</html>

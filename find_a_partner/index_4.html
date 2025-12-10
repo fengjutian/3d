@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>两人相配度系统</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial; padding:20px; background:#f0f2f5; }
+h2,h3 { margin-top:20px; }
+input[type=number], input[type=text] { width:100px; margin-right:10px; }
+.slider-container{ margin-bottom:8px; color:#000; }
+#charts { display:flex; flex-wrap:wrap; gap:20px; margin-top:20px; }
+.card { border-radius:12px; padding:15px; width:400px; box-shadow:0 4px 8px rgba(0,0,0,0.1); background:#fff; text-align:center;}
+.card h4{ margin:0 0 10px 0; }
+.card .score{ font-weight:bold; margin-bottom:10px; font-size:18px; }
+</style>
+</head>
+<body>
+
+<h2>两人相配度系统</h2>
+
+<h3>1. 输入两人信息</h3>
+<div>
+  <h4>人1</h4>
+  年龄: <input type="number" id="age1" value="30"> 
+  身高(cm): <input type="number" id="height1" value="175"><br><br>
+  性格: <input type="text" id="personality1" value="外向">
+  教育: <input type="text" id="education1" value="本科"><br><br>
+  兴趣(逗号分隔): <input type="text" id="interests1" value="羽毛球,旅游,悬疑电影">
+</div>
+
+<div>
+  <h4>人2</h4>
+  年龄: <input type="number" id="age2" value="32"> 
+  身高(cm): <input type="number" id="height2" value="180"><br><br>
+  性格: <input type="text" id="personality2" value="外向">
+  教育: <input type="text" id="education2" value="本科"><br><br>
+  兴趣(逗号分隔): <input type="text" id="interests2" value="羽毛球,美食,悬疑电影">
+</div>
+
+<h3>2. 调整维度权重</h3>
+<div id="sliders"></div>
+
+<h3>3. 匹配度可视化</h3>
+<div id="charts">
+  <div class="card">
+    <h4>总匹配度</h4>
+    <div class="score" id="totalScore">0%</div>
+  </div>
+  <canvas id="radarChart" width="400" height="400"></canvas>
+  <canvas id="barChart" width="400" height="400"></canvas>
+</div>
+
+<script>
+const dimensions=[
+  {name:'年龄',type:'number'},
+  {name:'身高',type:'number'},
+  {name:'性格',type:'text'},
+  {name:'教育',type:'text'},
+  {name:'兴趣',type:'interests'}
+];
+
+let radarChart=null, barChart=null;
+
+// 初始化权重滑条
+function initSliders(){
+  const container=document.getElementById('sliders');
+  container.innerHTML='';
+  dimensions.forEach(dim=>{
+    const div=document.createElement('div');
+    div.className='slider-container';
+    div.innerHTML=`${dim.name} 权重: <span id="weight_${dim.name}_val">5</span>
+      <input type="range" min="0" max="10" value="5" id="weight_${dim.name}" oninput="updateCharts()">
+    `;
+    container.appendChild(div);
+  });
+}
+
+// 兴趣匹配分数
+function interestScore(i1,i2){
+  const list1=i1.split(',').map(s=>s.trim());
+  const list2=i2.split(',').map(s=>s.trim());
+  const match=list1.filter(x=>list2.includes(x));
+  return Math.min(match.length / list1.length *10,10);
+}
+
+// 计算各维度分数
+function calculateScores(){
+  const scores={};
+  const age1=parseFloat(document.getElementById('age1').value);
+  const age2=parseFloat(document.getElementById('age2').value);
+  scores['年龄']=Math.max(0,10-Math.abs(age1-age2));
+
+  const height1=parseFloat(document.getElementById('height1').value);
+  const height2=parseFloat(document.getElementById('height2').value);
+  scores['身高']=Math.max(0,10-Math.abs(height1-height2)/2); // 身高差每2cm扣1分
+
+  const pers1=document.getElementById('personality1').value.trim();
+  const pers2=document.getElementById('personality2').value.trim();
+  scores['性格']=pers1===pers2?10:5;
+
+  const edu1=document.getElementById('education1').value.trim();
+  const edu2=document.getElementById('education2').value.trim();
+  scores['教育']=edu1===edu2?10:5;
+
+  const int1=document.getElementById('interests1').value.trim();
+  const int2=document.getElementById('interests2').value.trim();
+  scores['兴趣']=interestScore(int1,int2);
+
+  return scores;
+}
+
+// 计算总匹配度
+function calculateTotal(scores){
+  let total=0, weightSum=0;
+  dimensions.forEach(dim=>{
+    const w=parseFloat(document.getElementById(`weight_${dim.name}`).value);
+    document.getElementById(`weight_${dim.name}_val`).innerText=w;
+    total+=scores[dim.name]*w;
+    weightSum+=w*10;
+  });
+  return weightSum>0? (total/weightSum*100):0;
+}
+
+// 更新图表
+function updateCharts(){
+  const scores=calculateScores();
+  const total=calculateTotal(scores);
+  document.getElementById('totalScore').innerText=total.toFixed(1)+'%';
+
+  const labels=dimensions.map(d=>d.name);
+  const data=dimensions.map(d=>scores[d.name]);
+
+  const weights=dimensions.map(d=>parseFloat(document.getElementById(`weight_${d.name}`).value));
+
+  // 雷达图
+  if(radarChart) radarChart.destroy();
+  radarChart=new Chart(document.getElementById('radarChart').getContext('2d'),{
+    type:'radar',
+    data:{
+      labels:labels,
+      datasets:[{
+        label:'匹配分数',
+        data:data,
+        backgroundColor:'rgba(0,128,255,0.2)',
+        borderColor:'rgba(0,128,255,1)',
+        borderWidth:2,
+        pointBackgroundColor:'rgba(0,128,255,1)'
+      }]
+    },
+    options:{ scales:{ r:{ beginAtZero:true, max:10 } } }
+  });
+
+  // 柱状图
+  if(barChart) barChart.destroy();
+  barChart=new Chart(document.getElementById('barChart').getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:labels,
+      datasets:[{
+        label:'贡献分',
+        data:data.map((v,i)=>v*weights[i]),
+        backgroundColor:'rgba(0,200,100,0.6)'
+      }]
+    },
+    options:{ scales:{ y:{ beginAtZero:true } } }
+  });
+}
+
+// 初始化
+initSliders();
+updateCharts();
+</script>
+</body>
+</html>
